@@ -1,6 +1,9 @@
 # Ignore internal folders and their contents
 **/internal/
 
+# Ignore AI assistant files
+.ai/
+
 # CMake generated files
 CMakeCache.txt
 CMakeFiles/
