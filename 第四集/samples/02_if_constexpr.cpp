@@ -6,6 +6,7 @@
 #include <iostream>
 #include <type_traits>
 #include <string>
+#include <vector>
 
 // ============================================
 // 使用 if constexpr 实现类型相关的处理
