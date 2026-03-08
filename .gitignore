@@ -16,6 +16,7 @@ _deps/
 
 # Build directories
 build/
+**/samples/build/
 out/
 
 # Compiled object files

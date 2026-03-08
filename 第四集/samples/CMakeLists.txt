@@ -1,8 +1,11 @@
 cmake_minimum_required(VERSION 3.14)
 project(Episode4_CompileTimeComputation)
 
+# 设置输出目录到 build 文件夹
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/build)
+
 # 设置 C++ 标准
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # 为支持 C++20 特性的示例单独设置
@@ -27,6 +30,10 @@ add_executable(04_sfinae_example
 # 示例 5：constexpr vs consteval
 add_executable(05_constexpr_vs_consteval 
     05_constexpr_vs_consteval.cpp)
+
+# 示例 6：编译期字符串格式化（C++23）
+add_executable(06_compile_time_string_format
+    06_compile_time_string_format.cpp)
 
 # 如果编译器支持 C++20，为示例 5 使用 C++20
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
