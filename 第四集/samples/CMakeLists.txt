@@ -57,3 +57,12 @@ endif()
 message(STATUS "C++ Standard: ${CMAKE_CXX_STANDARD}")
 message(STATUS "Build Type: ${CMAKE_BUILD_TYPE}")
 message(STATUS "Compiler: ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
+
+add_custom_target(run_all
+    COMMAND 01_template_vs_constexpr
+    COMMAND 02_if_constexpr
+    COMMAND 03_compile_time_lookup_table
+    COMMAND 04_sfinae_example
+    COMMAND 05_constexpr_vs_consteval
+    COMMAND 06_compile_time_string_format
+)
