@@ -8,8 +8,7 @@ add_executable(02_type_transformations 02_type_transformations.cpp)
 add_executable(03_custom_type_trait 03_custom_type_trait.cpp)
 add_executable(04_requires_expression 04_requires_expression.cpp)
 add_executable(05_standard_concepts 05_standard_concepts.cpp)
-add_executable(06_custom_concept 06_custom_concept.cpp)
-add_executable(07_combination 07_combination.cpp)
+add_executable(06_combination 06_combination.cpp)
 
 add_custom_target(run_all
     COMMAND 01_type_traits_basics
@@ -17,7 +16,6 @@ add_custom_target(run_all
     COMMAND 03_custom_type_trait
     COMMAND 04_requires_expression
     COMMAND 05_standard_concepts
-    COMMAND 06_custom_concept
-    COMMAND 07_combination
+    COMMAND 06_combination
     COMMENT "Running all examples..."
 )

@@ -6,9 +6,9 @@
 
 从哲学到实践
 
-第五篇：类型萃取与 Concept——在编译期掌控类型
+第五篇：类型萃取与Concept——在编译期掌控类型
 
-一门语言的类型系统哲学
+一门语言的长青之道
 
 ---
 
@@ -16,24 +16,55 @@
 
 **先问一个问题：为什么要在编译期"看见"类型？**
 
-- 泛型代码（模板）需要对类型作出反应
-- 不同类型往往需要不同的处理逻辑
-- 编译器在实例化模板时，需要判断类型满足什么条件
-- 类型信息还可以被用来做编译期优化
+- 模板实例化需要类型的相关信息
+  比如需要知道 T 的大小和对齐，才能正确分配内存。
+- 编译期类型约束检查
+  在编译期直接拒绝不符合要求的类型，不用等到运行时再报错，而且错误信息尽量直观准确。例如，一个模板函数需要类型参数 T 支持加减乘除算术运算，如果给的类型是 `字符串`，编译期就应该报错。
+- 根据类型生成不同的分支代码
+  根据类型特征，选择生成不同的专用代码，以实现编译期分支分发与静态多态，运行时零开销。
+- 编译期优化
+  根据类型特征选择最优方式，比如是否给定的类型 T 可以通过直接内存拷贝批量复制，而不用逐元素调用拷贝构造函数。
 
 **核心问题：**
 
-> 如何在编译期检测一个类型的"特征"——比如它是不是整数、能不能拷贝、是不是某个类的派生类？
+> 如何在编译期检测一个类型的"特征"——比如它是不是整数、能不能直接通过内存拷贝复制元素、是不是某个类的派生类？
 
-这就是类型萃取（Type Traits）的核心价值。
+这就是类型萃取（Type Traits）的核心价值之一。
 
 ---
 
-## 第 2 页｜什么是类型萃取（Type Traits）？
+## 第 2 页｜为什么需要在编译期"修改"类型？
 
-**类型萃取（Type Traits）** 是 C++ 标准库提供的一套模板工具，用来在编译期**检测、查询、变换**类型。
+再问一个问题：为什么需要在编译期变换类型，或者简单的说，为什么要在编译期“修改”现有的类型？
 
-标准库在 `<type_traits>` 头文件中提供了大量预定义类型萃取：
+- 修正类型
+  经常有需要把类型修整成需要的形式。比如把模板收到的 `T`、`T&`、`T&&`、`const T&` 等类型实参，修正成“裸类型” `T`，以避免由于类型不统一导致的代码逻辑混乱。
+
+- 提取类型
+  从复合类型中提取组成部分。比如，从容器类型中提取容器中元素类型、从函数中提取返回类型、从指针提取指向类型等。
+
+- 修饰类型
+  基于已有类型 T 构造出 T 的指针、数组、引用等派生类型。
+
+**核心问题：**
+
+> 如何在编译期变换类型——比如去掉 const、去掉引用、加上指针、提取嵌套类型？
+
+这就是类型萃取（Type Traits）的核心价值之二。
+
+---
+
+## 第 3 页｜什么是类型萃取（Type Traits）？
+
+### 类型萃取的概念
+
+为了解决上述问题，引入了 **类型萃取（Type Traits）** 的概念，核心是在编译期"看见"类型的特征，根据这些特征做出决策，或者对已有类型进行变换。它有三个核心能力：**检测**（这个类型是不是整数？能不能拷贝？是不是某个类的派生类？）、**查询**（这个类型的大小是多少？对齐要求是什么？）、**变换**（去掉 const、去掉引用、加上指针、提取嵌套类型）。
+
+---
+
+## 第 4 页｜C++ 标准库的类型萃取组件
+
+C++ 标准库在 `<type_traits>` 头文件中提供了一整套模板工具，实现了类型萃取的思想。常用工具包括：
 
 | 萃取 | 含义 | 示例 |
 |------|------|------|
@@ -43,473 +74,253 @@
 | `std::is_same<T, U>` | T 和 U 是否相同 | `is_same<int, int>` → true |
 | `std::remove_const<T>` | 去掉 T 的 const | `remove_const<const int>` → int |
 | `std::remove_reference<T>` | 去掉 T 的引用 | `remove_reference<int&>` → int |
-| `add_pointer<T>` | 给 T 加上指针 | `add_pointer<int>` → int* |
+| `std::remove_cvref<T>` | 同时去掉 const / volatile 和引用 | `remove_cvref<const int&>` → int |
+| `std::add_pointer<T>` | 给 T 加上指针 | `add_pointer<int>` → int* |
 
-**核心结论：**
-
-> 类型萃取让我们在编译期"看见"类型的属性，并据此选择代码路径。
-
----
-
-## 第 3 页｜类型萃取的底层机制
-
-类型萃取的底层实现依赖两个关键技术：
-
-### 3.1 模板偏特化（Partial Specialization）
+**代码示例：**
 
 ```cpp
-// 主模板：默认是 false
-template <typename T>
-struct IsPointer : std::false_type {};
+#include <type_traits>
+#include <iostream>
 
-// 偏特化：当 T 是指针类型时，偏特化版本匹配，value = true
-template <typename T>
-struct IsPointer<T*> : std::true_type {};
-```
-
-编译器在实例化 `IsPointer<int*>` 时：
-1. 尝试主模板 → 匹配失败
-2. 尝试偏特化 `IsPointer<T*>` → 匹配成功
-3. 使用偏特化版本，得到 `value = true`
-
-### 3.2 SFINAE（复习）
-
-```cpp
-template <typename T, typename = void>
-struct HasValueType : std::false_type {};
-
-template <typename T>
-struct HasValueType<T, std::void_t<typename T::value_type>> : std::true_type {};
-```
-
-`std::void_t` 是 C++17 引入的技巧：如果 `typename T::value_type` 合法，`void_t` 展开为 `void`；否则 SFINAE 机制让这个特化被跳过。
-
-**核心结论：**
-
-> 模板偏特化 + SFINAE = 类型萃取的基础设施。
-
----
-
-## 第 4 页｜实战：手写一个类型萃取
-
-**目标：检测类型 T 是否是"类"（class / struct）**
-
-```cpp
-// 用标准库的 is_class
+// 用 type traits + if constexpr 根据类型做不同处理
 template <typename T>
 void process(T value) {
-    if constexpr (std::is_class_v<T>) {
-        // 只有 T 是 class/struct 时这段代码才会被编译
-        // ...
+    if constexpr (std::is_integral_v<T>) {
+        std::cout << "按照整数处理";
+    } else if constexpr (std::is_floating_point_v<T>) {
+        std::cout << "按照浮点数处理";
+    } else {
+        std::cout << "按照其他类型处理";
+    }
+}
+
+int main() {
+    std::cout << process(10)   << "\n";   // 20
+    std::cout << process(3.14) << "\n";   // 6.28
+}
+```
+
+这个例子展示了 type traits 最常用的场景：**配合 `if constexpr` 在模板里根据类型走不同编译期分支**。
+
+---
+
+## 第 5 页｜类型萃取的实现原理
+
+用 **模板偏特化** 和 **SFINAE** 来获取类型特征，例如 `is_integral` 的实现：
+
+```cpp
+// 简化版：枚举所有整数类型
+template<typename T>
+struct is_integral : std::false_type {};
+template<>
+struct is_integral<char> : std::true_type {};
+template<>
+// ... 枚举所有整数类型，int、long、long long、unsigned int 等。
+// 使用萃取
+static_assert(is_integral<int>::value);
+```
+
+事实上，最初标准库也是通过这种方式实现的类型萃取。而后来为了追求更好的编译性能，用了一些**intrinsic**（编译器内建指令，比如`__is_integral(_Tp)`）替代，以避免使用模板实例化带来的开销。
+
+我们开发者可以通过同样的方式去灵活实现自己想要的类型萃取。
+
+---
+
+## 第 6 页｜类型萃取的使用
+
+有了类型萃取这一强大的工具，我们就可以在编译期做很多有用的工作。也是一个比较实际的例子。
+
+**例一：编译期根据类型特征选择最合适的分支代码**
+
+```cpp
+template <typename T>
+void serialize(T& obj) {
+    if constexpr (std::is_trivially_copyable_v<T>) {
+        // T 可以直接 memcpy，无需逐字节序列化
+        std::memcpy(buffer, &obj, sizeof(T));
+    } else {
+        // T 有自定义析构或拷贝构造，必须逐字段序列化
+        obj.serialize_to(buffer);
     }
 }
 ```
 
-**目标：实现一个通用的"去掉 const 和引用"的萃取**
+编译期根据类型选择分支的另外一个好处是消除了运行时的判断，在编译好的代码中是没有这个 `if` 判断的。
 
+**例二：**
 ```cpp
 template <typename T>
-struct RemoveConstRef {
-    using type = T;  // 默认不变
-};
-
-template <typename T>
-struct RemoveConstRef<const T> {
-    using type = T;  // 去掉 const
-};
-
-template <typename T>
-struct RemoveConstRef<T&> {
-    using type = T;  // 去掉引用
-};
-
-template <typename T>
-struct RemoveConstRef<const T&> {
-    using type = T;  // 同时去掉 const 和引用
-};
-
-// 标准库写法（更简洁）
-// template <typename T>
-// using RemoveConstRef_t = std::remove_const_t<std::remove_reference_t<T>>;
-```
-
-**核心结论：**
-
-> 类型萃取的实质，是对类型进行"模式匹配"，
-> 用偏特化枚举所有我们关心的类型情况。
-
----
-
-## 第 5 页｜类型变换（Type Transformations）
-
-类型萃取不仅是"检测"，还能对类型做"变换"：
-
-| 萃取 | 作用 | 示例 |
-|------|------|------|
-| `std::remove_const<T>` | 去掉顶层 const | `const int` → `int` |
-| `std::add_const<T>` | 加上 const | `int` → `const int` |
-| `std::remove_reference<T>` | 去掉引用 | `int&` → `int` |
-| `std::add_lvalue_reference<T>` | 加上左值引用 | `int` → `int&` |
-| `std::decay<T>` | 按值传递规则变换 | `int&` → `int`，`const char[N]` → `const char*` |
-| `std::conditional<B, T, F>` | 条件选择类型 | `conditional<true, int, double>` → `int` |
-
-**实战：实现一个"要么返回 int，要么返回 double"的类型选择**
-
-```cpp
-template <bool B>
-using NumericType = std::conditional<B, int, double>::type;
-
-using A = NumericType<true>;   // int
-using B = NumericType<false>; // double
-```
-
----
-
-## 第 6 页｜类型萃取的工程价值
-
-类型萃取在工程中最重要的两个价值：
-
-### 6.1 泛型代码的差异化处理
-
-```cpp
-template <typename Container>
-void serialize(const Container& c) {
-    // 如果容器有 reserve 方法，预先分配空间
-    if constexpr (requires { c.reserve(0); }) {
-        c.reserve(c.size());
-    }
-    // 否则跳过
+std::enable_if_t<std::is_arithmetic_v<T>, void>
+process(T value) {
+    std::cout << "此函数模板仅支持可以进行算术运算的类型: " << value << "\n";
 }
 ```
-
-### 6.2 类型安全的条件编译
-
-```cpp
-template <typename T>
-T add(T a, T b) {
-    static_assert(std::is_arithmetic_v<T>,
-        "T must be arithmetic type (int, float, double, etc.)");
-    return a + b;
-}
-```
-
-**核心结论：**
-
-> 类型萃取让模板代码能够在编译期"看见"类型的身份，
-> 从而做出正确的类型安全决策。
 
 ---
 
 ## 第 7 页｜Concept 登场——模板约束的现代化
 
-**痛点回顾：** 模板元编程写类型约束，用 SFINAE 和 enable_if，写法非常晦涩：
+**痛点回顾：** 在 Concept 出现之前，需要用 SFINAE 和 enable_if 等手段实现模板元编程中的类型约束，写法非常晦涩：
 
 ```cpp
 // 古老的 SFINAE 写法
 template <typename T>
-typename std::enable_if<std::is_integral<T>::value, T>::type
-process(T value) {
-    return value * 2;
-}
+std::enable_if_t<std::is_arithmetic_v<T>, void>
+process(T value) { ... }
 ```
 
 **问题：**
-- 返回类型声明里塞了一堆逻辑，可读性极差
-- 约束条件与函数逻辑混在一起
-- 错误信息是一大堆模板展开的噪音
+原本函数的返回类型就是简单的 void ，现在还要加上一段 enable_if 代码，看起来就很不直观。而且这种方式下产生的错误信息，经常是一大堆模板展开时的错误信息，并没有指向出问题的地方，相当于是大量噪音，干扰了代码修正工作。
 
-**C++20 的解决方案：Concept
+**C++20 的解决方案：Concept**
 
 > Concept 是一种**命名了的编译期谓词**，
 > 用来约束模板参数必须满足的条件。
 
 ---
 
-## 第 8 页｜Concept 的基本语法
+## 第 8 页｜使用 Concept
 
-### 定义 Concept
+### 使用标准库 Concept 约束模板
 
-```cpp
-// 用 requires 子句定义概念
-template <typename T>
-concept Numeric = std::is_integral_v<T> || std::is_floating_point_v<T>;
-
-// 或者更丰富
-template <typename T>
-concept Addable = requires(T a, T b) {
-    a + b;  // T 必须支持 + 运算
-    a - b;  // T 必须支持 - 运算
-};
-```
-
-### 使用 Concept 约束模板
+C++20 标准库提供了大量现成的 Concept，如 `std::integral`、`std::floating_point`、`std::same_as` 等。直接用它们约束模板，三种语法都可以：
 
 ```cpp
-// 语法1：concept name 作为类型约束
-template <Numeric T>
+// 语法1：concept 作为类型约束（最简洁）
+template <std::integral T>
 T double_value(T x) {
     return x * 2;
 }
 
 // 语法2：用 requires 子句
 template <typename T>
-    requires Numeric<T>
+    requires std::integral<T>
 T double_value(T x) {
     return x * 2;
 }
 
-// 语法3：C++17 风格的简短约束
-template <Numeric T>
-T triple(T x) requires Numeric<T> {
+// 语法3：尾部 requires
+template <typename T>
+T triple(T x) requires std::integral<T> {
     return x * 3;
 }
 ```
 
+我最喜欢的还是第1种语法，一般情况下用第1种语法就行了。
+
 **核心结论：**
 
-> Concept 让模板约束从"隐式魔法"变成"显式声明"，
 > 代码意图一目了然。
 
 ---
 
-## 第 9 页｜requires 表达式详解
+## 第 9 页｜定义 Concept
 
-`requires` 表达式有两种用法：
+标准库 Concept 覆盖了常见场景，但特定需求还需要自己定义。自定义 Concept 有两种方式：
 
-### 9.1 requires 子句（放在 template<> 后面）
-
-```cpp
-template <typename T>
-    requires std::integral<T>
-T factorial(T n) { /* ... */ }
-```
-
-### 9.2 requires 表达式（作为布尔常量）
+### 方式一：组合 type traits
 
 ```cpp
 template <typename T>
-concept HasPlus = requires(T a, T b) {
-    a + b;        // 语法检查：T 能做 + 运算
-    a - b;        // 语法检查：T 能做 - 运算
-    a == b;       // 语法检查：T 能做 == 比较
-};
+concept Numeric = std::is_integral_v<T> || std::is_floating_point_v<T>;
 ```
 
-`requires` 表达式内部可以写**多项检查**：
+### 方式二：requires 表达式
+
+`requires` 表达式内部可以写**多项检查**，全部满足才通过：
 
 ```cpp
 template <typename T>
 concept Regular = requires(T a, T b, T c) {
-    // 拷贝构造
-    T{a};
-    // 拷贝赋值
-    a = b;
-    // 默认构造（如果不是标量类型）
-    // 相等比较
-    a == b;
-    // 不相等比较
-    a != b;
+    T{a};    // 拷贝构造
+    a = b;   // 拷贝赋值
+    a == b;  // 相等比较
+    a != b;  // 不相等比较
 };
 ```
 
 ---
 
-## 第 10 页｜标准库预定义 Concept（C++20）
+## 第 10 页｜实战：智能选择算法
 
-C++20 标准库提供了一套开箱即用的 Concept：
+### 问题
+有些容器只支持仅向前遍历，而有些容器支持随机访问。如何根据容器能力自动选择最优排序算法？
 
-| Concept | 含义 |
-|---------|------|
-| `std::same_as<T, U>` | T 和 U 是同一类型 |
-| `std::integral<T>` | T 是整型 |
-| `std::floating_point<T>` | T 是浮点型 |
-| `std::derived_from<T, B>` | T 派生自 B |
-| `std::movable<T>` | T 可以移动 |
-| `std::copyable<T>` | T 可以拷贝 |
-| `std::default_initializable<T>` | T 可以默认构造 |
-| `std::semiregular<T>` | T 是半规则类型（默认构造 + 可拷贝 + 可赋值） |
-| `std::regular<T>` | T 是规则类型（半规则 + 可相等比较） |
-| `std::invocable<F, Args...>` | F 可以用 Args 调用 |
-
----
-
-## 第 11 页｜Concept 的工程价值：让编译器说话
-
-### 价值1：错误信息极大改善
+### 解决方案：Concepts + Subsumption
 
 ```cpp
-template <Numeric T>
-T safe_divide(T a, T b) {
-    return a / b;
+#include <concepts>
+#include <iostream>
+#include <vector>
+#include <list>
+
+// 前向迭代器版本（适用于 list）
+// 使用插入排序/归并排序
+template<std::forward_iterator Iter>
+void sort(Iter first, Iter last) {
+    std::cout << "forward_iterator sort (insertion/merge)" << std::endl;
+}
+
+// 随机访问迭代器版本（适用于 vector）
+// 使用快速排序/堆排序
+template<std::random_access_iterator Iter>
+void sort(Iter first, Iter last) {
+    std::cout << "random_access sort (quick/heap)" << std::endl;
 }
 
 int main() {
-    std::string s = "hello";
-    safe_divide(s, s);  // 编译器直接告诉你：
-                        // "s 违反了 Numeric 约束"
-                        // 而不是一堆模板错误
+    std::list<int> l = {3, 1, 2};
+    std::vector<int> v = {3, 1, 2};
+    
+    sort(l.begin(), l.end());  // 自动选择 forward 版本
+    sort(v.begin(), v.end());  // 自动选择 random_access 版本
 }
 ```
 
-### 价值2：约束即文档
+### 效果
+- **一套接口**：统一调用 `sort()`
+- **自动适配**：编译器根据迭代器能力选择最优实现
+- **零运行时开销**：纯编译期决策
 
-```cpp
-// 这行代码本身就是最好的注释
-template <std::integral T>
-T count_bits(T value) { /* ... */ }
+---
+
+## 第 11 页｜Concept 的蕴含关系——约束越严格，匹配越优先
+
+Concept 的引入，让我们有了更智能的代码选择的方法。
+
+### Subsumption（蕴含关系）
+
+**核心概念**：约束严格程度决定调用哪个版本
+
+**给定如下蕴含关系**：
+```
+signed_integral ⊂ integral ⊂ arithmetic
 ```
 
-> 任何人看到这个函数签名，就知道 T 必须是整数类型。
-> 不需要额外的注释说明。
-
-### 价值3：编译期早期检查
+编译器在编译以下代码的时候，会按照蕴含关系的从严格到宽松的优先级，选择合适的函数模板。
 
 ```cpp
-// 如果传入了不满足条件的类型
-// 编译器在实例化时就立刻报错
-// 而不是等到运行时报错
+template<std::integral T>        // 所有整数
+void process(T);
+
+template<std::signed_integral T> // 有符号整数（更严格）
+void process(T);
+
+process(42);   // 调用 signed_integral 版本（更严格）
+process(42u);  // 调用 integral 版本（唯一匹配）
 ```
 
 ---
 
-## 第 12 页｜实战：综合示例
-
-**设计一个函数：接受两个参数，支持 + 和 < 运算，返回较大者**
-
-```cpp
-// 用 Concept 约束
-template <typename T>
-concept AddableComparable = requires(T a, T b) {
-    a + b;
-    a < b;
-};
-
-template <AddableComparable T>
-T max_value(T a, T b) {
-    return (a + b + (a < b ? b : a) - (a < b ? a : b)) / 2;
-    // 更直观写法：
-    // return (a < b) ? b : a;
-}
-```
-
-**配合 if constexpr 与 Concept 做分支**
-
-```cpp
-template <typename T>
-void process(T value) {
-    if constexpr (std::integral<T>) {
-        // 整数路径
-        value *= 2;
-    } else if constexpr (std::floating_point<T>) {
-        // 浮点路径
-        value *= 2.0;
-    } else {
-        // 未知类型
-        static_assert(std::floating_point<T> || std::integral<T>,
-            "Unsupported type");
-    }
-}
-```
-
----
-
-## 第 13 页｜Concept 的底层原理
-
-Concept 的实现仍然依赖模板偏特化，但进行了封装：
-
-```cpp
-// 这两行是等价的（简化理解）
-template <typename T>
-concept Numeric = std::is_integral_v<T> || std::floating_point_v<T>;
-
-// 编译器内部展开大致等价于：
-template <typename T>
-struct Numeric_impl : std::bool_constant<
-    std::is_integral_v<T> || std::floating_point_v<T>
-> {};
-template <typename T>
-constexpr bool Numeric = Numeric_impl<T>::value;
-```
-
-**关键点：**
-- Concept 是**编译期的布尔常量**
-- 编译器在实例化模板前先检查 Concept 约束
-- SFINAE 机制在 Concept 时代依然存在，只是被包装了
-
----
-
-## 第 14 页｜Concept 的边界与陷阱
-
-### 边界：Concept 不能做什么
-
-- **不能递归**：`concept Foo = Foo<T>` 是非法的
-- **不能有默认模板参数**
-- **不能做运行时判断**（编译期求值）
-
-### 常见陷阱
-
-**陷阱1：顶层 const 的问题**
-
-```cpp
-// std::same_as<int, const int> 值为 false
-// 因为顶层 const 被视为不同
-
-// 正确做法：
-template <typename T>
-concept Addable = std::integral<T> || std::floating_point<T>;
-```
-
-**陷阱2：隐式转换**
-
-```cpp
-// requires 检查严格的语法可用性
-// 不考虑隐式转换
-template <typename T>
-concept HasPlus = requires(T a, T b) {
-    a + b;  // 必须是 a + b 直接合法，不允许先转换
-};
-
-// 如果 a + b 需要隐式转换，这里会失败
-```
-
----
-
-## 第 15 页｜类型萃取 + Concept：现代 C++ 的组合拳
-
-两者配合使用，各司其职：
-
-| 场景 | 用类型萃取 | 用 Concept |
-|------|-----------|-----------|
-| 查询类型属性 | `is_integral_v<T>` | - |
-| 约束模板参数 | - | `std::integral<T>` |
-| 类型变换 | `remove_const_t<T>` | - |
-| 条件编译 | `if constexpr` | Concept 约束 |
-| 静态断言 | `static_assert` | Concept |
-
-**最佳实践：**
-
-```cpp
-// 1. 用 Concept 做接口约束（"这个类型能做什么"）
-template <typename T>
-    requires std::movable<T>
-class SmartWrapper {
-    T data;
-public:
-    // 2. 用类型萃取做内部实现（"如何处理这个类型"）
-    using value_type = std::remove_cvref_t<T>;
-    // ...
-};
-```
-
----
-
-## 第 16 页｜总结
+## 第 12 页｜总结
 
 ### 类型萃取的贡献
 
-- ✅ 让编译期"看见"类型的属性
-- ✅ 为模板代码提供类型安全的差异化逻辑
-- ✅ 支撑了标准库 `<type_traits>` 的基础设施
+- ✅ 让编译期"看见"类型的特性
+- ✅ 为模板选择不同的处理逻辑
+- ✅ 对类型进行抽取、变换
+- ✅ 实现零开销静态多态
 
 ### Concept 的贡献
 
@@ -520,17 +331,19 @@ public:
 
 ### 核心结论
 
-> **类型萃取告诉你"类型是什么"，**
-> **Concept 告诉你"类型能做什么"。**
-> **两者合在一起，让 C++ 在编译期拥有完整的类型掌控能力。**
+> 类型萃取在编译期获得类型特征，抽取、变换类型，
+> Concept 在编译期约束模板参数。
+> 两者合在一起，让 C++ 在编译期拥有类型掌控能力——
+> 不需要耗费运行期的一个字节、一个时钟周期。
+>
+> 这正是零开销抽象哲学的实践。
 
 ---
 
 ### 下期预告
 
-**C++20 Ranges 与算法革命——用组合式思维写代码**
-
-我们将探讨 C++20 Ranges 如何彻底改造标准库算法，让函数式编程风格与现代 C++ 完美融合。
+**C++20 Ranges —— 用管道思维打开编程新模式**
+我们将探讨 C++20 Ranges 如何改造标准库算法，让管道式编程风格与现代 C++ 完美融合。
 
 ---
 
