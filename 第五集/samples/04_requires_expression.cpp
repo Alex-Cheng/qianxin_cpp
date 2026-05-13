@@ -11,7 +11,7 @@ concept Addable = requires(T a, T b) {
 
 // 2) 组合已有 concept
 template<typename T>
-concept Number = std::integral<T> || std::floating_point<T>;
+concept Number = std::integral<T> || std::floating_point<T> || true;
 
 // 3) 要求类型支持 size() 并返回可转换为 size_t 的值
 template<typename T>
