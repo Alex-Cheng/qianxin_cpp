@@ -289,7 +289,7 @@ Ranges 虽好，但有几个坑需要清楚：
 auto dangerous() {
     std::vector<int> v{1, 2, 3, 4, 5};
     return v | std::views::filter([](int x) { return x % 2 == 0; });
-    // 危险！v 随函数返回被析构，返回的 view 悬垂
+    // 危险！v 随函数返回被析构，返回的 view 悬垂!
 }
 ```
 
